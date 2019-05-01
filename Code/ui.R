@@ -15,13 +15,15 @@ library(shiny)
 library(leaflet)
 
 # Define variables to be selected (must be in data)
-burnvars <- c("Expected Property Value at Risk" = "prop_bp",
-              "Property Value x Flame Height > 4m" = "prop_bpg4")
+burnvars <- c("Burn Probability" = "bp",
+                          "Property Value" = "pv",
+                          "WUI Class" = "wCl2019")
+wuiYears <- c("1975","1985","1995","2005","2015","2019")
+burnYears <- c("2019")
 
 wuivars <- c("Area in WUI (km)" = "area_km", "Area in WUI (percent)" = "area_pct", "Houses in WUI"="housing_units",
              "Houses in WUI (percent)" = "housing_pct", "Population in WUI"="pop", "Population in WUI (percent)"="pop_pct")
-histvars <- c("test1")
-climvars <- c("test2")
+
 
 
 navbarPage("Wildfires", id="nav",
@@ -45,15 +47,27 @@ navbarPage("Wildfires", id="nav",
                                     width = 330, height = "auto",align="center",
                                     
                                     h2("Wildfires explorer"),
+                                    fixedRow(
+                                      column(12,
+                                             fixedRow(
+                                               column(6,
+                                                      selectInput("dataset", "Burn Metric", burnvars, selected=burnvars[1]),
+                                                      align="center",offset=1
+                                              ),
+                                               column(4,
+                                                      uiOutput("Year"),
+                                                      align="center"
+                                                      
+                                               ))))
                                     
-                                    selectInput("dataset", "Burn Metric", burnvars, selected=burnvars[1]),
+                                    #selectInput("dataset", "Burn Metric", burnvars, selected=burnvars[1])
                                     # selectInput("size", "Size", vars, selected = "adultpop"),
                                     # conditionalPanel("input.color == 'superzip' || input.size == 'superzip'",
                                     #                  # Only prompt for threshold when coloring or sizing by superzip
                                     #                  numericInput("threshold", "SuperZIP threshold (top n percentile)", 5)
                                     #)
-                                    selectInput("wuiMetric","WUI Metrics", wuivars, selected = wuivars[6]),
-                                    plotOutput("wuiPlot", height = 200)
+                                  #  selectInput("wuiMetric","WUI Metrics", wuivars, selected = wuivars[6])
+                                  #  plotOutput("wuiPlot", height = 200)
                                 #    selectInput("histMetric","Historical Data",histvars, selected=histvars[1]),
                                  #   selectInput("climMetric","Climate Data",climvars, selected=climvars[1])
                                     
