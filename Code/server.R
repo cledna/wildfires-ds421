@@ -1,23 +1,7 @@
 ## RShiny Interactive Map platform for wildfires visualization
-# Last updated by Catherine Ledna, 4/16/2019
+# Last updated by Catherine Ledna, 5/3/2019
 # Initial code adapted from Shiny gallery: https://github.com/rstudio/shiny-examples/blob/master/063-superzip-example/server.R
 # Leaflet Choropleth Tutorial: https://rstudio.github.io/leaflet/choropleths.html 
-
-# Proposed Viz Features: 
-#   Choropleth map with county-level interactive polygons (click/hover over county and display value for metric)
-#     NOTE: current data format has each metric as a variable in the underlying SpatialPolygonsDataFrame (from processing via Kelly's script)
-#     To Do:
-#     2. Formatting: 
-#       a. Line thickness for counties
-#       b. Need a polygons layer for state boundary lines only 
-#       c. Other 
-#   Sidebar interactive features: 
-#     Select a metric for choropleth layer -- DONE
-#       TODO: add a legend title and units for each metric 
-#     FIRE FACTS!
-#       
-#     Display plot showing how county selected compares to state/country as a whole (hist? scatter?)
-#     Additional features/ideas?
 
 # Required packages
 library(shiny)
@@ -28,121 +12,166 @@ library(lattice)
 library(tidyverse)
 library(reshape2)
 library(rgdal)
+#setwd("~/Desktop/wildfires-clean/Code") # To do - change this; currently works if setwd to source file location
 
-# Outside of the app, reading in shapefile data as SpatialPolygonsDataFrame and filtering just to California 
-county_shapefile <- readOGR(dsn = "../data/county_bp_values/")# Change to point to shapefile location
-ca <- county_shapefile[county_shapefile@data$STATEFP=="06",] # For now selecting only CA to plot bc it's faster
-CA_ONLY <- T
+if (!exists("LOADED")){
+  source("loadData.R")  # Load datasets into workspace
+}
 
-if(CA_ONLY==T) inputdata<- ca else inputdata <- county_shapefile
-
-
-# Read in WUI data and process 
-# To do move the processing step to other script 
-wui <- read_csv("../data/combined_wui_data.csv") %>%select(FIPS,COUNTY,STATE,var,TotalWUI1990,TotalWUI2000,TotalWUI2010)%>% 
-  melt(id.vars=c("FIPS","COUNTY","STATE","var")) %>% mutate(variable=as.character(variable), year=as.numeric(gsub("TotalWUI","",variable)),
-                                                            variable="TotalWUI")
-  
-wuivars <- c("Area in WUI (km)" = "area_km", "Area in WUI (percent)" = "area_pct", "Houses in WUI"="housing_units",
-             "Houses in WUI (percent)" = "housing_pct", "Population in WUI"="pop", "Population in WUI (percent)"="pop_pct")
-
-burnvars <- c("Property Value x Burn Probability" = "prop_bp",
-              "Property Value x P(Flame Height > 4m)" = "prop_bpg4")
-
-
-
-
-# These are the breaks for the legend / color scale for the default variable 
-bins <- c(0, 1e6, 1e7, 1e8, 1e9, 3e9)
-pal <- colorBin("YlOrRd", domain = inputdata$prop_value, bins = bins)
-
+#### Step 2: Define Relevant Variables 
+burnvars <- c("Burn Probability" = "bp",
+              "Property Value" = "pv",
+              "WUI Class" = "wCl2019")
 
 function(input, output, session) {
   
-  ## Reactive Expression for Variable Selection 
-    
+  # Define default bins for burn probability
+  bp_bins <- c(0,0.003, 0.008, 0.05,0.105) #  TODO thresholds
+  pal <- colorBin("YlOrRd", domain = grid$bp, bins = bp_bins)
  
   ## Render the Leaflet map 
-  
-  # Create the map
-  # Add burn probability tiles 
   output$map <- renderLeaflet({
-    leaflet(inputdata)%>%
-      setView(-96, 37.8, 4) %>%
-      addTiles() %>% # This uses OpenStreetMap as a default provider
-      addPolygons(
-        layerId= inputdata$COUNTYFP,
-        fillColor = ~pal(inputdata[[burnvars[1]]]),
-        weight = 2,
-        opacity = 1,
-        color = "white",
-        dashArray = "3",
-        fillOpacity = 0.7,
-        highlight = highlightOptions(
-          weight = 5,
-          color = "#666",
-          dashArray = "",
-          fillOpacity = 0.7,
-          bringToFront = TRUE)
-      ) %>%
-      addLegend(pal = pal, values = ~prop_value, opacity = 0.7, title = NULL,
-                position = "bottomright")
+    leaflet()%>%
+      setView(-116, 37, 5.5) #%>%
+    #   addTiles() %>% # This uses OpenStreetMap as a default provider
+    #   addPolygons( # Add burn probability tiles 
+    #     data=grid,
+    #     layerId = grid$id,
+    #     fillColor = ~pal(bp),
+    #     weight=1,
+    #     color="transparent",
+    #     fillOpacity=0.7
+    #   ) %>%
+    # addPolygons( # Add county outlines 
+    #   data=inputdata,
+    #   layerId= inputdata$COUNTYFP,
+    #   fillColor = "transparent",
+    #   weight = 2,
+    #   opacity = 1,
+    #   color = "black",
+    #   dashArray = "3",
+    #   fillOpacity = 0.7,
+    #   highlight = highlightOptions(
+    #     weight = 5,
+    #     color = "#666",
+    #     dashArray = "",
+    #     fillOpacity = 0.7,
+    #     bringToFront = TRUE)
+    # ) %>%
+    #   addLegend(data=grid,pal = pal, values = ~bp, opacity = 0.7, title = NULL,
+    #             position = "bottomleft")
+  })
+  
+  # Render Year based on dataset selected 
+  output$Year <- renderUI({
+    if (input$dataset==burnvars[1]){
+      yr <- burnYears
+      sel <- 1
+    }
+    else{
+      yr <- wuiYears
+      sel <- 6
+    }
+      
+    selectInput("Year", "Year", yr,selected=yr[sel])
+  })
+  
+  # Filtered MTBS Data 
+  filteredMTBSpts<- reactive({
+    mtbs_pts_ca[mtbs_pts_ca$year >= input$historic[1] & mtbs_pts_ca$year <= input$historic[2],]
+  })
+  
+  var <- reactive({
+    input$dataset
+  })
+  yr <- reactive({
+    input$Year
   })
   
   #This will allow the map to react to input data
   observe({
-  
-    var <- input$dataset # The input selected in drop-down window for dataset 
-    data <- inputdata[[var]]
-    
-    # Recalculate bins based on data ranges 
+   # Recalculate bins based on data ranges
     calc_bins <- function(vals){
-      #nbins <- 6 
-      out <- signif(c(min(vals,na.rm=T),quantile(vals,.25), quantile(vals,.5), quantile(vals,.75),max(vals,na.rm = T)), 3)
+      #nbins <- 6
+      out <- signif(unique(c(min(vals,na.rm=T),quantile(vals,.25,na.rm=T), quantile(vals,.5,na.rm=T), quantile(vals,.75,na.rm=T),quantile(vals,.9,na.rm=T),max(vals,na.rm = T))), 3)
     }
     
-   pal <- colorBin("YlOrRd", domain = data, bins = calc_bins(data))
-   
-   leafletProxy("map", data = inputdata) %>%
-      clearShapes() %>%
+    if (var()=="bv_"){
+      var2 <- paste0(var(),input$Year)
+      pal <- colorBin("YlOrRd",domain=grid[[var2]],bins=c(0,100000,1000000,100000000,2e9))
+      
+    }else if (grepl("wCl",var())){
+      yr <- input$Year
+      var2 <- paste0("wCl",yr())
+      pal <- colorFactor("YlOrRd", grid[[var2]])
+      
+    }else if (var()=="bp"){
+      pal <- colorBin("YlOrRd", domain = grid[[var()]], bins = bp_bins)
+      var2<- var()
+      
+    } else if(grepl("pv",var())){
+      var2 <- paste0("pv",yr())
+      pal <- colorBin("YlOrRd", domain = grid[[var2]], bins = calc_bins(grid[["pv2019"]]))
+      
+    }else{
+      pal <- colorBin("YlOrRd", domain = grid[[var()]], bins = calc_bins(grid[[var()]]))
+      var2 <- var()
+    }
+    
+    df <- grid@data[[var2]]
+    
+
+   leafletProxy("map") %>%
+      removeShape(layerId=grid$id) %>%
+     removeShape(layerId=mtbs_pts_ca$id) %>%
       clearControls()%>%
-      addPolygons(
-        layerId= inputdata$COUNTYFP,
-        fillColor = pal(inputdata[[input$dataset]]),
-        weight = 2,
-        opacity = 1,
-        color = "white",
-        dashArray = "3",
-        fillOpacity = 0.7,
-        highlight = highlightOptions(
-          weight = 5,
-          color = "#666",
-          dashArray = "",
-          fillOpacity = 0.7,
-          bringToFront = TRUE)
-      ) %>%
-      addLegend(pal = pal, values = inputdata[[input$dataset]], opacity = 0.7, title = NULL,
-                position = "bottomright")
+     addPolygons(
+       data=grid,
+       fillColor = ~pal(df),
+       weight=1,
+       color="transparent",
+       fillOpacity=0.7
+     ) %>%
+     addPolygons(
+       data=inputdata,
+       layerId= inputdata$COUNTYFP,
+       fillColor = "transparent",
+       weight = 2,
+       opacity = 1,
+       color = "black",
+       dashArray = "3",
+       fillOpacity = 0.7,
+       highlight = highlightOptions(
+         weight = 5,
+         color = "#666",
+         dashArray = "",
+         fillOpacity = 0.7,
+         bringToFront = TRUE)
+     ) %>%
+    addCircleMarkers(data=filteredMTBSpts(),radius=2,color="black",fillOpacity = 0.7,
+                          layerId = filteredMTBSpts()$id)%>%
+     addLegend(pal = pal, values = df, opacity = 0.7, title = NULL,
+               position = "bottomleft")
 
   })
-  
-  # # Function to display pop-up data 
+
+  # # Function to display pop-up data
   showMapPopup <- function(id,lat,lng) {
     selectedCounty <- inputdata[inputdata$COUNTYFP == id,]
     countyStateFP <- as.numeric(paste0(selectedCounty$STATEFP[1],selectedCounty$COUNTYFP[1]))
-    
-    wuidata <- wui %>% filter(FIPS==countyStateFP, year==2010)
-    
+
+    #wuidata <- wui %>% filter(FIPS==countyStateFP, year==2010)
+
      content <- as.character(tagList(
-       tags$h4("County:", as.character(selectedCounty$NAME[1])),tags$br(),
-       sprintf("Property Value in County (Million $): %s",signif(selectedCounty[["prop_value"]]/10^6,3)),tags$br(),
-       sprintf("Housing in WUI (2010): %s%%", wuidata[wuidata$var=="housing_pct",]$value)
+       tags$h4(as.character(selectedCounty$NAME[1])," County")#,tags$br(),
+       #sprintf("Property Value in County (Million $): %s",signif(selectedCounty[["prop_value"]]/10^6,3)),tags$br()
+       #sprintf("Housing in WUI (2010): %s%%", wuidata[wuidata$var=="housing_pct",]$value)
       ))
 
     leafletProxy("map") %>% addPopups(lng, lat, content, layerId = id)
   }
 
-  # Allow pop-up to appear when county is clicked 
+  # Allow pop-up to appear when county is clicked
   observe({
     leafletProxy("map") %>% clearPopups()
     event <- input$map_shape_click
@@ -154,32 +183,60 @@ function(input, output, session) {
     })
   })
 
+  # Holder for county variable that's clicked
   selected <- reactive({
     if (is.null(input$map_shape_click))
       return(NULL)
-    
+
     county <- input$map_shape_click
     countyDF <- inputdata[inputdata$COUNTYFP == county$id,]
     countyStateFP <- as.numeric(paste0(countyDF$STATEFP[1],countyDF$COUNTYFP[1]))
     return(countyStateFP)
 
   })
-
-  output$wuiPlot <- renderPlot({
-    # If no county selected, no plot
-    if (is.null(selected()))
-      return(FALSE)
-
-    wuidata2 <- wui %>% filter(FIPS==selected())
-
-    ggplot(wuidata2 %>% filter(var==input$wuiMetric))+
-      geom_line(aes(year,value))+
-      ggtitle("Change in WUI, 1990-2010")+
-      xlab("")+
-      ylab(names(wuivars[wuivars==input$wuiMetric]))
+   
+  # Reactive Data frame for county-level wui data over 1 in 100 burn prob 
+  wuidata <- reactive({
+    wui_over1 %>% filter(fips==selected())
   })
-  # 
+  
+  # WUI Plot 
+   output$wuiPlot <- renderPlot({
+      # If no county selected, no plot
+      if (is.null(selected())||nrow(wuidata())==0)
+        return(FALSE)
+      
+      if(input$wuiMetric=="pv"){
+        title<- "Property Value over 1 in 100 Burn Probability"
+        yl<- "Property value"
+        
+        p <- ggplot(wuidata())+
+          geom_line(aes(year,y=pv,group=wuiClass,color=factor(wuiClass)))+
+          theme_bw()+
+          ggtitle(title)+
+          xlab("")+
+          ylab(yl)+
+          scale_color_hue("WUI Class",labels=wui_cats[unique(wuidata()$wuiClass)])
+        
+      } 
+      else{
+        title <- "Number of houses over 1 in 100 Burn Probability"
+        yl <- "Number of Houses"
+        
+        p <- ggplot(wuidata())+
+          geom_line(aes(year,y=nh,group=wuiClass,color=factor(wuiClass)))+
+          theme_bw()+
+          ggtitle(title)+
+          xlab("")+
+          ylab(yl)+
+          scale_color_hue("WUI Class",labels=wui_cats[unique(wuidata()$wuiClass)])
+        
+      }
+      
+      return(p)       
+        
+   })
+   
 
 }
-  
   
