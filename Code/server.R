@@ -26,7 +26,7 @@ burnvars <- c("Burn Probability" = "bp",
 function(input, output, session) {
   
   # Define default bins for burn probability
-  bp_bins <- c(0,0.003, 0.008, 0.05,0.105) #  TODO thresholds
+  bp_bins <- c(0,0.003, 0.01, 0.05,0.105) #  TODO thresholds
   pal <- colorBin("YlOrRd", domain = grid$bp, bins = bp_bins)
  
   ## Render the Leaflet map 
@@ -93,17 +93,18 @@ function(input, output, session) {
    # Recalculate bins based on data ranges
     calc_bins <- function(vals){
       #nbins <- 6
-      out <- signif(unique(c(min(vals,na.rm=T),quantile(vals,.25,na.rm=T), quantile(vals,.5,na.rm=T), quantile(vals,.75,na.rm=T),quantile(vals,.9,na.rm=T),max(vals,na.rm = T))), 3)
+      # sampling more from right side of distribution bc of long tail 
+      out <- signif(unique(c(min(vals,na.rm=T),quantile(vals,.25,na.rm=T), quantile(vals,.5,na.rm=T), quantile(vals,.75,na.rm=T),quantile(vals,.9,na.rm=T),quantile(vals,.95,na.rm=T),max(vals,na.rm = T))), 3)
     }
     
     if (var()=="bv_"){
       var2 <- paste0(var(),input$Year)
-      pal <- colorBin("YlOrRd",domain=grid[[var2]],bins=c(0,100000,1000000,100000000,2e9))
+      pal <- colorBin("YlOrRd",domain=grid[[var2]],bins=calc_bins(grid[["bv_2019"]]))# keeping bins constant across years
       
     }else if (grepl("wCl",var())){
       yr <- input$Year
       var2 <- paste0("wCl",yr())
-      pal <- colorFactor("YlOrRd", grid[[var2]])
+      pal <- colorFactor("Paired", grid[[var2]])
       
     }else if (var()=="bp"){
       pal <- colorBin("YlOrRd", domain = grid[[var()]], bins = bp_bins)
@@ -111,7 +112,7 @@ function(input, output, session) {
       
     } else if(grepl("pv",var())){
       var2 <- paste0("pv",yr())
-      pal <- colorBin("YlOrRd", domain = grid[[var2]], bins = calc_bins(grid[["pv2019"]]))
+      pal <- colorBin("YlOrRd", domain = grid[[var2]], bins = calc_bins(grid[["pv2019"]]))# keep bins constant across years
       
     }else{
       pal <- colorBin("YlOrRd", domain = grid[[var()]], bins = calc_bins(grid[[var()]]))

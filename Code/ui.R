@@ -47,7 +47,7 @@ navbarPage("Wildfires", id="nav",
                                              ))),
                                     
                                   plotOutput("wuiPlot", height = 200),
-                                  sliderInput("historic","Historic Wildfires",min=1984,max=2016,value=c(2010,2016))
+                                  sliderInput("historic","Historic Wildfires",min=1984,max=2016,value=c(2010,2016),sep = "")
 
                         )
                         
